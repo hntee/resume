@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Qwen Omni vs InternVL 架构梳理</title>
+  <style>
+    :root {
+      --bg: #f3efe5;
+      --panel: rgba(255, 252, 246, 0.92);
+      --ink: #1d2b2a;
+      --muted: #556865;
+      --line: rgba(29, 43, 42, 0.12);
+      --accent: #1e6f5c;
+      --accent-2: #bc5c2c;
+      --accent-3: #3d5a80;
+      --soft: #e7dfcf;
+      --shadow: 0 18px 50px rgba(43, 32, 20, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(188, 92, 44, 0.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(30, 111, 92, 0.18), transparent 24%),
+        linear-gradient(180deg, #f7f2e9 0%, var(--bg) 100%);
+    }
+
+    .page {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 36px 24px 64px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, rgba(255,255,255,0.88), rgba(248,242,230,0.92));
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 32px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -60px;
+      top: -60px;
+      width: 240px;
+      height: 240px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(30,111,92,0.18), transparent 68%);
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+
+    h1 {
+      font-size: 44px;
+      line-height: 1.05;
+      max-width: 920px;
+    }
+
+    .subtitle {
+      margin-top: 14px;
+      max-width: 980px;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.7;
+    }
+
+    .hero-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .tag {
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(30, 111, 92, 0.1);
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 24px;
+      margin-top: 24px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .section-title {
+      font-size: 26px;
+      margin-bottom: 18px;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .kpi {
+      padding: 16px;
+      background: rgba(255,255,255,0.72);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+
+    .kpi strong {
+      display: block;
+      font-size: 30px;
+      margin-bottom: 8px;
+    }
+
+    .kpi span {
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .lane {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 20px;
+      background: rgba(255,255,255,0.64);
+    }
+
+    .lane h3 {
+      font-size: 22px;
+      margin-bottom: 8px;
+    }
+
+    .lane small {
+      color: var(--muted);
+      display: block;
+      margin-bottom: 16px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .block {
+      border-radius: 18px;
+      padding: 14px 16px;
+      border: 1px solid transparent;
+      position: relative;
+    }
+
+    .block::after {
+      content: "↓";
+      position: absolute;
+      left: 50%;
+      bottom: -20px;
+      transform: translateX(-50%);
+      color: rgba(29, 43, 42, 0.35);
+      font-weight: 700;
+    }
+
+    .block:last-child::after {
+      display: none;
+    }
+
+    .v-block {
+      background: rgba(61, 90, 128, 0.1);
+      border-color: rgba(61, 90, 128, 0.18);
+    }
+
+    .a-block {
+      background: rgba(188, 92, 44, 0.1);
+      border-color: rgba(188, 92, 44, 0.18);
+    }
+
+    .t-block {
+      background: rgba(30, 111, 92, 0.1);
+      border-color: rgba(30, 111, 92, 0.18);
+    }
+
+    .m-block {
+      background: rgba(73, 63, 124, 0.08);
+      border-color: rgba(73, 63, 124, 0.18);
+    }
+
+    .block-title {
+      font-weight: 700;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .block-desc {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .callout {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border-left: 4px solid var(--accent);
+      background: rgba(30, 111, 92, 0.08);
+      color: var(--ink);
+      line-height: 1.7;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 14px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 84px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .step-id {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 10px 12px;
+      background: #153d39;
+      color: #f9f4eb;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .step-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,0.7);
+      padding: 14px 16px;
+    }
+
+    .step-card strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .step-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .note {
+      padding: 18px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.72);
+      border: 1px solid var(--line);
+    }
+
+    .note h3 {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .sources a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .sources a:hover {
+      text-decoration: underline;
+    }
+
+    .footer {
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.8;
+    }
+
+    @media (max-width: 1080px) {
+      .grid,
+      .compare,
+      .three-col,
+      .kpi-grid {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 34px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <h1>Qwen Omni 架构梳理：和之前 InternVL 纯 VL 训练版本到底差在哪</h1>
+      <p class="subtitle">
+        这页按“面试可讲”的方式整理。核心不是背论文，而是把三件事讲清楚：
+        之前的 <strong>InternVL 版本本质上是 Video/Image + Text 的纯 VL 路线</strong>，
+        现在的 <strong>Qwen Omni 版本是 Video + Audio + Text 的统一多模态路线</strong>，
+        而你们本地又做了 <strong>audio-in-video 显式接入</strong> 的工程改造。
+      </p>
+      <div class="hero-tags">
+        <span class="tag">InternVL 纯 VL</span>
+        <span class="tag">Qwen Omni</span>
+        <span class="tag">Thinker-Talker</span>
+        <span class="tag">TMRoPE</span>
+        <span class="tag">Audio In Video</span>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi">
+          <strong>旧版</strong>
+          <span>InternVL 路线更像视觉编码器 + LLM，对视频通常是抽帧后按多图/多帧方式喂给语言模型。</span>
+        </div>
+        <div class="kpi">
+          <strong>新版</strong>
+          <span>Qwen Omni 明确把视觉、音频、文本放到同一套多模态推理链路里，不再把音频只当外部补丁。</span>
+        </div>
+        <div class="kpi">
+          <strong>你们改造</strong>
+          <span>本地 `qwen_omni_utils` 会从视频里抽音轨，把 `video` 与 `audio` 一起打包进推理输入。</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2 class="section-title">一眼看懂两版结构</h2>
+        <div class="compare">
+          <article class="lane">
+            <h3>之前：InternVL 纯 VL 训练版本</h3>
+            <small>更像“视觉理解模型接一个语言模型”，音频通常不在主干里</small>
+            <div class="stack">
+              <div class="block v-block">
+                <span class="block-title">视频 / 图片输入</span>
+                <div class="block-desc">视频主要靠抽帧，转成多张图或多帧 patch 序列。</div>
+              </div>
+              <div class="block v-block">
+                <span class="block-title">Vision Encoder / ViT</span>
+                <div class="block-desc">视觉 backbone 提特征，核心是把像素变成视觉 token。</div>
+              </div>
+              <div class="block m-block">
+                <span class="block-title">Projector / 特征对齐</span>
+                <div class="block-desc">把视觉特征映射到 LLM token 空间，再塞给语言模型。</div>
+              </div>
+              <div class="block t-block">
+                <span class="block-title">LLM 解码 caption</span>
+                <div class="block-desc">主任务仍然是文字生成，天然更偏视觉描述、OCR、问答。</div>
+              </div>
+            </div>
+            <div class="callout">
+              面试里可以直接说：<strong>InternVL 这条线本质上是 VL，不是原生 Omni。</strong>
+              视频能做，但它主要靠视觉帧理解；如果音频要用，往往需要额外 ASR 或旁路信息，而不是主干统一建模。
+            </div>
+          </article>
+
+          <article class="lane">
+            <h3>现在：Qwen Omni 版本</h3>
+            <small>更像“统一多模态理解主干”，把视觉、音频、文本放进一个系统</small>
+            <div class="stack">
+              <div class="block v-block">
+                <span class="block-title">视频 / 图像 / 音频联合输入</span>
+                <div class="block-desc">不仅处理视觉帧，也处理原始音频流和文本 prompt。</div>
+              </div>
+              <div class="block m-block">
+                <span class="block-title">多模态前端编码</span>
+                <div class="block-desc">视觉和音频分别编码，再在共享 attention 里融合。</div>
+              </div>
+              <div class="block m-block">
+                <span class="block-title">Thinker</span>
+                <div class="block-desc">负责统一理解、推理和文本生成，是主要“思考”主干。</div>
+              </div>
+              <div class="block a-block">
+                <span class="block-title">Talker</span>
+                <div class="block-desc">如果要语音输出，Talker 接 Thinker 隐状态继续自回归生成音频 token。</div>
+              </div>
+            </div>
+            <div class="callout">
+              面试里更稳的说法是：<strong>Qwen Omni 不只是“多了个音频输入”，而是训练目标和结构都从纯 VL 升级成了统一多模态。</strong>
+              理解层由 Thinker 统一，生成层可以拆成文本与语音两条能力。
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="section-title">你们本地改造点</h2>
+        <div class="timeline">
+          <div class="step">
+            <span class="step-id">Step 1</span>
+            <div class="step-card">
+              <strong>`process_mm_info()` 统一抽多模态信息</strong>
+              <p>你们在 <code>qwen_omni_utils/v2_5/__init__.py</code> 里，把音频处理和视觉处理统一入口收敛到 <code>process_mm_info(conversations, use_audio_in_video)</code>。</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-id">Step 2</span>
+            <div class="step-card">
+              <strong>从 video 里显式抽 audio</strong>
+              <p><code>audio_process.py</code> 里如果 <code>use_audio_in_video=True</code>，遇到 <code>{"type": "video"}</code> 会先检查视频是否有音轨，再用 <code>librosa</code> 读出 16k 音频。</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-id">Step 3</span>
+            <div class="step-card">
+              <strong>推理时把 video 和 audio 一起送进 vLLM</strong>
+              <p>在 <code>auto_infer_omni.py</code> 里，<code>prepare_inputs_for_vllm()</code> 会把 <code>video</code>、<code>audio</code>、<code>image</code> 打包进 <code>multi_modal_data</code>，同时显式传 <code>use_audio_in_video=True</code>。</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-id">Step 4</span>
+            <div class="step-card">
+              <strong>业务含义</strong>
+              <p>这意味着你们不是只依赖视频帧去“猜音频”，而是让 Omni 主干拿到真实音轨，再做音画联合 caption、QA revise、音频事件理解。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top: 24px;">
+      <h2 class="section-title">Qwen Omni 官方结构里最值得讲的 4 个点</h2>
+      <div class="three-col">
+        <div class="note">
+          <h3>1. Thinker-Talker</h3>
+          <ul>
+            <li>Thinker 负责统一理解与文本输出。</li>
+            <li>Talker 负责语音输出，直接利用 Thinker 的隐状态。</li>
+            <li>优势是文本推理和语音生成解耦，但又端到端联动。</li>
+          </ul>
+        </div>
+        <div class="note">
+          <h3>2. TMRoPE</h3>
+          <ul>
+            <li>把音频时间轴和视频时间轴对齐。</li>
+            <li>本质是在 RoPE 上做 time-aligned multimodal 扩展。</li>
+            <li>解决“画面在 3 秒，语音也在 3 秒”这种跨模态对位问题。</li>
+          </ul>
+        </div>
+        <div class="note">
+          <h3>3. 共享 Attention 融合</h3>
+          <ul>
+            <li>不是简单 late fusion。</li>
+            <li>多模态 token 在统一 attention 里交互。</li>
+            <li>这比“单独跑 ASR 再拼文本”更像原生 Omni。</li>
+          </ul>
+        </div>
+        <div class="note">
+          <h3>4. Streaming Audio</h3>
+          <ul>
+            <li>Talker 侧为了流式音频生成，会控制感受野。</li>
+            <li>官方提到 sliding-window DiT 用来降低首包时延。</li>
+            <li>如果面试官问实时语音交互，这点很好用。</li>
+          </ul>
+        </div>
+        <div class="note">
+          <h3>你可以怎么讲</h3>
+          <ul>
+            <li>“InternVL 更像 VL 主干，Qwen Omni 是统一多模态主干。”</li>
+            <li>“Omni 的关键不只是多输入，而是时间对齐和共享 attention 融合。”</li>
+            <li>“你们本地又进一步把视频里的真实音轨显式接进来了。”</li>
+          </ul>
+        </div>
+        <div class="note">
+          <h3>别讲太满的地方</h3>
+          <ul>
+            <li>如果没改底层模型权重，不要说“我们重构了 Omni 架构”。</li>
+            <li>更稳的说法是“我们改了多模态输入处理和推理链路”。</li>
+            <li>把贡献定位在数据链路、schema、评测、训练闭环和接入改造。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2 class="section-title">面试口语版</h2>
+        <div class="callout">
+          之前我们纯 VL 版本主要是用 InternVL 来训练，本质上是视觉编码器加语言模型，视频更多还是通过抽帧的方式去理解，音频并不是主干统一建模的一部分。后来切到 Qwen Omni 后，结构上最大的变化是它本身就是统一多模态架构，视频、音频和文本可以在同一套理解链路里融合。官方这套里比较关键的是 Thinker-Talker 设计，以及用 TMRoPE 去对齐音频和视频时间轴。我们本地又做了一层接入改造，在 <code>qwen_omni_utils</code> 里把视频里的音轨显式抽出来，并和视频一起送进推理链路，所以它对有声视频 caption 更自然，也更适合后面的音频理解和 revise。
+        </div>
+      </div>
+
+      <div class="panel sources">
+        <h2 class="section-title">依据来源</h2>
+        <ul>
+          <li>官方 Qwen2.5-Omni 文档：<a href="https://huggingface.co/docs/transformers/en/model_doc/qwen2_5_omni">Transformers Qwen2.5-Omni</a></li>
+          <li>本地接入代码：<code>hunyuan_uni_captioner-swift/qwen_omni_utils/v2_5/__init__.py</code></li>
+          <li>本地音频抽取逻辑：<code>hunyuan_uni_captioner-swift/qwen_omni_utils/v2_5/audio_process.py</code></li>
+          <li>本地 vLLM 推理接入：<code>hunyuan_uni_captioner-swift/inference_scripts/vl_infer/auto_infer_omni.py</code></li>
+          <li>InternVL 模板实现：<code>hunyuan_uni_captioner-swift/swift/llm/template/template/internvl.py</code></li>
+        </ul>
+        <div class="footer">
+          这页故意画成“面试讲解图”，不是论文复刻图。目的是让你在 1 到 2 分钟里把结构差异、工程改造点和业务价值讲顺。
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

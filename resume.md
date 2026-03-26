@@ -1,7 +1,7 @@
 # Nathan
 
 - 电话：(+86) 13135694610
-- 邮箱：thatsaid@outlook.com
+- 邮箱：thatsaid@hotmail.com
 
 ## 工作经历
 
@@ -9,12 +9,12 @@
 算法工程师（T10）｜深圳  
 2022.03 - 至今
 
-**项目：视频与多模态 Caption 方案研发**
+**项目：Hunyuan Video 训练数据 Caption / Omni Caption / 多镜头 Caption 方案研发**
 
-- 负责视频 caption 方案的持续迭代，经历了从纯视频无音频 caption，到带音频的多镜头 caption，再到统一的 caption / omni caption 方案演进，支撑视频 T2V 相关训练数据构造需求。
+- 负责 Hunyuan Video 训练数据 caption 方案的持续迭代，经历了从纯视频无音频 caption，到带音频的多镜头 caption，再到统一的 caption / omni caption 方案演进，支撑视频 T2V 相关训练数据构造需求。
 - 负责单视频 / 多镜头音画一致 caption 方案研发，围绕 VLM + Omni、Omni 直出等路线进行技术验证与方案选型，推动系统从多专家模型融合逐步升级到独立多模态模型端到端生成。
 - 负责多镜头 caption schema 设计，并参与统一 caption 格式迭代；主导多阶段 pipeline 建设，规范视觉、音频、字幕 / OCR、时间信息等结构化字段。针对模型易受字幕干扰产生音频幻觉的问题，设计语种检测 + ASR prior 注入的音频链路，提升音频事件描述的准确性和音画一致性。
-- 负责训练数据构造、评测集建设和效果迭代，参与 SFT 与 GRPO 训练，并推动数据生产、模型训练、自动评测和人工修正流程协同，形成 caption 持续优化闭环；后期版本累计产出数亿级视频 caption 数据，各项指标准确率达到 80%+。
+- 负责训练数据构造、评测集建设和效果迭代，参与 SFT 与 GRPO 训练，并推动数据生产、模型训练、自动评测和人工修正流程协同，形成 caption 持续优化闭环；后期版本累计产出数亿级视频 caption 数据，统一 PE 版本在多镜头 QA 评测上准确率稳定在 77%+，并显著优于 qwen3omni 当前训练版和 Gemini 2.5 Pro 直出方案。
 
 **项目：多模态大模型训练**
 

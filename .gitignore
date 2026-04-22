@@ -1,7 +1,11 @@
 *
 !.gitignore
 !*.md
+!*.js
 !resume.html
 !resume.pdf
+!resume_en.html
+!resume_en.pdf
+!resume.html.template
 !llm_algo_interview_questions.ipynb
 !omni_architecture.html

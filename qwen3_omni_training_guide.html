@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Qwen3 Omni 架构详解与训练全流程</title>
+  <style>
+    :root {
+      --bg: #f3efe5;
+      --panel: rgba(255, 252, 246, 0.92);
+      --ink: #1d2b2a;
+      --muted: #556865;
+      --line: rgba(29, 43, 42, 0.12);
+      --accent: #1e6f5c;
+      --accent-2: #bc5c2c;
+      --accent-3: #3d5a80;
+      --accent-4: #6b4c9a;
+      --soft: #e7dfcf;
+      --shadow: 0 18px 50px rgba(43, 32, 20, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", -apple-system, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(188, 92, 44, 0.16), transparent 28%),
+        radial-gradient(circle at top right, rgba(30, 111, 92, 0.16), transparent 24%),
+        radial-gradient(circle at bottom center, rgba(107, 76, 154, 0.10), transparent 30%),
+        linear-gradient(180deg, #f7f2e9 0%, var(--bg) 100%);
+      line-height: 1.7;
+    }
+
+    .page {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 36px 24px 80px;
+    }
+
+    /* ---- Hero ---- */
+    .hero {
+      background: linear-gradient(135deg, rgba(255,255,255,0.90), rgba(248,242,230,0.94));
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 40px 36px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      left: -80px; bottom: -80px;
+      width: 280px; height: 280px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(188,92,44,0.14), transparent 68%);
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -60px; top: -60px;
+      width: 240px; height: 240px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(30,111,92,0.16), transparent 68%);
+    }
+
+    h1, h2, h3, h4 { margin: 0; letter-spacing: -0.02em; }
+    h1 { font-size: 40px; line-height: 1.1; max-width: 920px; position: relative; z-index: 1; }
+    .subtitle {
+      margin-top: 14px;
+      max-width: 980px;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.8;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-tags {
+      display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px;
+      position: relative; z-index: 1;
+    }
+    .tag {
+      padding: 7px 14px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .tag-green { background: rgba(30, 111, 92, 0.1); color: var(--accent); }
+    .tag-orange { background: rgba(188, 92, 44, 0.1); color: var(--accent-2); }
+    .tag-blue { background: rgba(61, 90, 128, 0.1); color: var(--accent-3); }
+    .tag-purple { background: rgba(107, 76, 154, 0.1); color: var(--accent-4); }
+
+    /* ---- Section / Panel ---- */
+    .section-gap { margin-top: 28px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+    .section-title {
+      font-size: 24px;
+      margin-bottom: 18px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid var(--line);
+    }
+    .section-subtitle {
+      font-size: 18px;
+      margin: 20px 0 12px;
+      color: var(--accent);
+    }
+
+    /* ---- Grids ---- */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .grid-2-1 { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 24px; }
+
+    /* ---- KPI cards ---- */
+    .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; }
+    .kpi {
+      padding: 18px;
+      background: rgba(255,255,255,0.72);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+    .kpi strong { display: block; font-size: 26px; margin-bottom: 6px; }
+    .kpi span { color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+    .kpi-accent strong { color: var(--accent); }
+    .kpi-orange strong { color: var(--accent-2); }
+    .kpi-blue strong { color: var(--accent-3); }
+
+    /* ---- Arch diagram ---- */
+    .arch-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      align-items: center;
+    }
+    .arch-row {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+    .arch-box {
+      border-radius: 16px;
+      padding: 14px 18px;
+      border: 1px solid transparent;
+      flex: 1;
+      min-width: 180px;
+      max-width: 320px;
+    }
+    .arch-box-full {
+      border-radius: 16px;
+      padding: 14px 18px;
+      border: 1px solid transparent;
+      width: 100%;
+      max-width: 680px;
+    }
+    .arch-arrow {
+      text-align: center;
+      color: rgba(29, 43, 42, 0.3);
+      font-size: 22px;
+      font-weight: 700;
+      padding: 4px 0;
+      user-select: none;
+    }
+    .box-vision { background: rgba(61, 90, 128, 0.1); border-color: rgba(61, 90, 128, 0.2); }
+    .box-audio { background: rgba(188, 92, 44, 0.1); border-color: rgba(188, 92, 44, 0.2); }
+    .box-text { background: rgba(30, 111, 92, 0.1); border-color: rgba(30, 111, 92, 0.2); }
+    .box-fusion { background: rgba(107, 76, 154, 0.08); border-color: rgba(107, 76, 154, 0.18); }
+    .box-thinker { background: rgba(30, 111, 92, 0.1); border-color: rgba(30, 111, 92, 0.2); }
+    .box-talker { background: rgba(188, 92, 44, 0.1); border-color: rgba(188, 92, 44, 0.2); }
+    .box-title { font-weight: 700; display: block; margin-bottom: 5px; font-size: 15px; }
+    .box-desc { color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+
+    /* ---- Compare table ---- */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14px;
+      font-size: 14px;
+    }
+    .compare-table th {
+      background: rgba(30, 111, 92, 0.08);
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 2px solid var(--line);
+      font-weight: 700;
+    }
+    .compare-table td {
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .compare-table tr:hover td { background: rgba(30, 111, 92, 0.03); }
+    .badge-new {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(30, 111, 92, 0.12);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 700;
+      margin-left: 6px;
+    }
+    .badge-old {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.06);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      margin-left: 6px;
+    }
+
+    /* ---- Timeline ---- */
+    .timeline { display: grid; gap: 16px; }
+    .step {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+    .step-id {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 10px 12px;
+      font-weight: 700;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .step-id-green { background: #153d39; color: #f9f4eb; }
+    .step-id-orange { background: #7a3a17; color: #f9f4eb; }
+    .step-id-blue { background: #2a4260; color: #f9f4eb; }
+    .step-id-purple { background: #42305e; color: #f9f4eb; }
+    .step-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,0.72);
+      padding: 16px 18px;
+    }
+    .step-card strong { display: block; margin-bottom: 6px; font-size: 15px; }
+    .step-card p { margin: 0; color: var(--muted); line-height: 1.7; font-size: 14px; }
+
+    /* ---- Notes / Callout ---- */
+    .note {
+      padding: 18px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.72);
+      border: 1px solid var(--line);
+    }
+    .note h3 { font-size: 16px; margin-bottom: 10px; }
+
+    .callout {
+      margin-top: 16px;
+      padding: 16px 18px;
+      border-radius: 16px;
+      line-height: 1.8;
+      font-size: 14.5px;
+    }
+    .callout-green {
+      border-left: 4px solid var(--accent);
+      background: rgba(30, 111, 92, 0.06);
+    }
+    .callout-orange {
+      border-left: 4px solid var(--accent-2);
+      background: rgba(188, 92, 44, 0.06);
+    }
+    .callout-blue {
+      border-left: 4px solid var(--accent-3);
+      background: rgba(61, 90, 128, 0.06);
+    }
+    .callout-purple {
+      border-left: 4px solid var(--accent-4);
+      background: rgba(107, 76, 154, 0.06);
+    }
+
+    /* ---- Code ---- */
+    code {
+      background: rgba(29, 43, 42, 0.06);
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-family: "SF Mono", "Fira Code", "Menlo", monospace;
+      font-size: 13px;
+    }
+    .code-block {
+      background: #1d2b2a;
+      color: #e0ddd5;
+      padding: 18px 20px;
+      border-radius: 16px;
+      font-family: "SF Mono", "Fira Code", "Menlo", monospace;
+      font-size: 13px;
+      line-height: 1.7;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-top: 14px;
+    }
+    .code-block .hl-key { color: #7ec8a5; }
+    .code-block .hl-val { color: #f0c674; }
+    .code-block .hl-comment { color: #6b7f7d; font-style: italic; }
+    .code-block .hl-str { color: #e8a87c; }
+
+    /* ---- Params table ---- */
+    .params-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 13.5px;
+    }
+    .params-table th {
+      text-align: left;
+      padding: 8px 12px;
+      background: rgba(29, 43, 42, 0.04);
+      border-bottom: 2px solid var(--line);
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .params-table td {
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .params-table td:first-child {
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* ---- Pipeline flow ---- */
+    .pipeline-flow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+    .pipeline-node {
+      padding: 10px 16px;
+      border-radius: 14px;
+      font-weight: 600;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    .pipeline-arrow {
+      color: rgba(29, 43, 42, 0.3);
+      font-weight: 700;
+      font-size: 20px;
+      user-select: none;
+    }
+
+    /* ---- Reward diagram ---- */
+    .reward-box {
+      border: 2px dashed var(--line);
+      border-radius: 20px;
+      padding: 20px;
+      margin-top: 14px;
+    }
+    .reward-title {
+      font-weight: 700;
+      font-size: 16px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .reward-steps {
+      display: grid;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .reward-step {
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.6);
+      border: 1px solid var(--line);
+    }
+    .reward-result {
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 13px;
+      display: inline-block;
+      margin-top: 6px;
+    }
+
+    /* ---- Oral section ---- */
+    .oral-box {
+      background: linear-gradient(135deg, rgba(255,255,255,0.88), rgba(248,242,230,0.92));
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 24px;
+      font-size: 15.5px;
+      line-height: 2;
+      color: var(--ink);
+    }
+
+    /* ---- Sources ---- */
+    .sources { margin-top: 8px; }
+    .sources a { color: var(--accent); text-decoration: none; }
+    .sources a:hover { text-decoration: underline; }
+    .sources li { margin: 4px 0; font-size: 14px; }
+
+    ul { margin: 0; padding-left: 18px; color: var(--muted); line-height: 1.8; font-size: 14px; }
+    li { margin: 3px 0; }
+
+    .footer {
+      margin-top: 32px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 1080px) {
+      .grid-2, .grid-3, .grid-4, .grid-2-1, .kpi-grid { grid-template-columns: 1fr; }
+      h1 { font-size: 30px; }
+      .page { padding: 20px 16px 60px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+
+    <!-- ======== HERO ======== -->
+    <section class="hero">
+      <h1>Qwen3 Omni 架构详解与项目训练全流程</h1>
+      <p class="subtitle">
+        从官方 Qwen3 Omni 模型架构到 Hunyuan Uni-Captioner 项目训练实战。
+        涵盖 <strong>Thinker-Talker 架构</strong>、<strong>TMRoPE 时间对齐</strong>、
+        <strong>Audio-in-Video 工程改造</strong>，
+        以及 <strong>SFT &rarr; DPO &rarr; GRPO</strong> 三阶段完整训练流程。
+      </p>
+      <div class="hero-tags">
+        <span class="tag tag-green">Thinker-Talker</span>
+        <span class="tag tag-orange">TMRoPE</span>
+        <span class="tag tag-blue">MoE 30B/3B</span>
+        <span class="tag tag-purple">Audio-in-Video</span>
+        <span class="tag tag-green">SFT</span>
+        <span class="tag tag-orange">DPO</span>
+        <span class="tag tag-blue">GRPO</span>
+        <span class="tag tag-purple">Megatron + vLLM</span>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi kpi-accent">
+          <strong>30B / 3B</strong>
+          <span>MoE 架构：总参数 30B，每 token 激活 3B，动态路由分配专家计算</span>
+        </div>
+        <div class="kpi kpi-orange">
+          <strong>211ms</strong>
+          <span>Talker 端到端音频首包时延，轻量因果 ConvNet 流式合成</span>
+        </div>
+        <div class="kpi kpi-blue">
+          <strong>80%+</strong>
+          <span>项目 caption 各项指标准确率，累计产出数亿级视频描述数据</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== PART 1: Architecture ======== -->
+    <section class="grid-2 section-gap">
+      <div class="panel">
+        <h2 class="section-title">一、Qwen3 Omni 核心架构</h2>
+
+        <div class="arch-flow">
+          <!-- Input row -->
+          <div class="arch-row">
+            <div class="arch-box box-vision">
+              <span class="box-title">Vision Encoder</span>
+              <span class="box-desc">继承 Qwen3-VL，提取视频帧视觉特征</span>
+            </div>
+            <div class="arch-box box-audio">
+              <span class="box-title">Audio Encoder (AuT)</span>
+              <span class="box-desc">2000 万小时音频预训练，替代 Whisper</span>
+            </div>
+            <div class="arch-box box-text">
+              <span class="box-title">Text Embedding</span>
+              <span class="box-desc">文本 Prompt 编码</span>
+            </div>
+          </div>
+
+          <div class="arch-arrow">&darr;</div>
+
+          <!-- TMRoPE -->
+          <div class="arch-box-full box-fusion">
+            <span class="box-title">TMRoPE 时间对齐</span>
+            <span class="box-desc">在 RoPE 位置编码上做多模态时间轴扩展，让音频的第 3 秒和视频的第 3 秒对齐到同一个 position space</span>
+          </div>
+
+          <div class="arch-arrow">&darr;</div>
+
+          <!-- Shared Attention -->
+          <div class="arch-box-full box-fusion">
+            <span class="box-title">共享 Attention 融合层</span>
+            <span class="box-desc">视觉 / 音频 / 文本 token 在统一 attention 里直接交互 &mdash; 不是 late fusion，是原生 Early Fusion</span>
+          </div>
+
+          <div class="arch-arrow">&darr;</div>
+
+          <!-- Thinker -->
+          <div class="arch-box-full box-thinker">
+            <span class="box-title">Thinker（思考者）</span>
+            <span class="box-desc">MoE 架构 (30B 参数 / 3B 激活) &middot; 统一多模态推理 &middot; 文本 token 生成 &middot; 动态路由到专家（数学 / 逻辑 / 视听）</span>
+          </div>
+
+          <div class="arch-arrow">&darr;</div>
+
+          <!-- Output row -->
+          <div class="arch-row">
+            <div class="arch-box box-text">
+              <span class="box-title">文本输出</span>
+              <span class="box-desc">Caption / QA / 推理结果</span>
+            </div>
+            <div class="arch-box box-talker">
+              <span class="box-title">Talker（表达者）</span>
+              <span class="box-desc">接 Thinker 隐状态 &rarr; 多码本自回归 &rarr; 流式语音 (可选关闭)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Compare Table -->
+      <div class="panel">
+        <h2 class="section-title">InternVL vs Qwen3 Omni</h2>
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>维度</th>
+              <th>InternVL <span class="badge-old">旧版</span></th>
+              <th>Qwen3 Omni <span class="badge-new">现版</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>架构本质</td><td>Vision-Language (纯VL)</td><td><strong>统一多模态 Omni</strong></td></tr>
+            <tr><td>视频处理</td><td>抽帧 &rarr; 多图 patch</td><td><strong>完整视频流</strong></td></tr>
+            <tr><td>音频处理</td><td>外部 ASR / 旁路输入</td><td><strong>主干统一建模</strong></td></tr>
+            <tr><td>融合方式</td><td>Late Fusion (Projector)</td><td><strong>Early Fusion (共享 Attention)</strong></td></tr>
+            <tr><td>时间对齐</td><td>无</td><td><strong>TMRoPE</strong></td></tr>
+            <tr><td>模型结构</td><td>ViT &rarr; Proj &rarr; LLM</td><td><strong>MoE + Thinker-Talker</strong></td></tr>
+            <tr><td>输出能力</td><td>纯文本</td><td><strong>文本 + 语音</strong></td></tr>
+            <tr><td>参数规模</td><td>各版本不同</td><td><strong>30B (3B 激活)</strong></td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout callout-green" style="margin-top:20px;">
+          <strong>面试关键表述：</strong>InternVL 本质上是 VL 模型，视频靠抽帧理解，音频不在主干里。Qwen Omni 是统一多模态架构，视觉、音频、文本在共享 Attention 层融合，时间轴通过 TMRoPE 对齐。核心区别不只是"多了个音频输入"，而是训练目标和结构都从纯 VL 升级成了统一多模态。
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== 4 Key Tech Points ======== -->
+    <section class="panel section-gap">
+      <h2 class="section-title">二、四个核心技术点</h2>
+      <div class="grid-4">
+        <div class="note">
+          <h3 style="color:var(--accent)">1. Thinker-Talker</h3>
+          <ul>
+            <li><strong>Thinker</strong> 负责统一理解、推理和文本输出</li>
+            <li><strong>Talker</strong> 接 Thinker 隐状态，自回归生成语音 token</li>
+            <li>文本推理和语音生成解耦，但端到端联动</li>
+            <li>项目中 <code>ENABLE_AUDIO_OUTPUT=0</code> 关闭 Talker</li>
+          </ul>
+        </div>
+        <div class="note">
+          <h3 style="color:var(--accent-2)">2. TMRoPE</h3>
+          <ul>
+            <li>在 RoPE 上做 time-aligned multimodal 扩展</li>
+            <li>音频时间轴和视频时间轴对齐到同一 position space</li>
+            <li>解决"画面 3 秒，语音 3 秒"的跨模态对位</li>
+            <li>项目中 <code>ADD_TIMESTAMP=true</code> 利用此能力</li>
+          </ul>
+        </div>
+        <div class="note">
+          <h3 style="color:var(--accent-3)">3. Audio Encoder (AuT)</h3>
+          <ul>
+            <li>2000 万小时音频数据预训练</li>
+            <li>替代 Whisper，直接输出音频特征</li>
+            <li>不经过 ASR 文字中间表示</li>
+            <li>以原始特征参与多模态推理</li>
+          </ul>
+        </div>
+        <div class="note">
+          <h3 style="color:var(--accent-4)">4. 共享 Attention</h3>
+          <ul>
+            <li>视觉/音频/文本 token 统一 attention 交互</li>
+            <li>不是 late fusion，是 Early Fusion</li>
+            <li>比"跑 ASR 再拼文本"效果更好</li>
+            <li>这才是"原生 Omni"</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== PART 2: Engineering ======== -->
+    <section class="panel section-gap">
+      <h2 class="section-title">三、项目工程改造：Audio-in-Video 显式接入</h2>
+      <div class="grid-2">
+        <div>
+          <div class="timeline">
+            <div class="step">
+              <span class="step-id step-id-green">Step 1</span>
+              <div class="step-card">
+                <strong>统一入口 <code>process_mm_info()</code></strong>
+                <p>在 <code>qwen_omni_utils/v2_5/__init__.py</code> 中，将音频处理和视觉处理统一收敛到一个函数：<code>process_mm_info(conversations, use_audio_in_video)</code></p>
+              </div>
+            </div>
+            <div class="step">
+              <span class="step-id step-id-orange">Step 2</span>
+              <div class="step-card">
+                <strong>从 video 显式抽取 audio</strong>
+                <p><code>audio_process.py</code> 中，当 <code>use_audio_in_video=True</code> 且输入类型为 video 时，先用 <code>av.open</code> 检查音轨，再用 <code>librosa.load(sr=16000)</code> 读出 16kHz 单声道音频</p>
+              </div>
+            </div>
+            <div class="step">
+              <span class="step-id step-id-blue">Step 3</span>
+              <div class="step-card">
+                <strong>video + audio 一起送进 vLLM</strong>
+                <p><code>auto_infer_omni.py</code> 中，<code>prepare_inputs_for_vllm()</code> 把 video、audio、image 打包进 <code>multi_modal_data</code>，显式传 <code>use_audio_in_video=True</code></p>
+              </div>
+            </div>
+            <div class="step">
+              <span class="step-id step-id-purple">Step 4</span>
+              <div class="step-card">
+                <strong>业务价值</strong>
+                <p>模型拿到真实音轨而不是从画面"猜"音频，音画联合 caption、QA revise、音频事件理解都更准确</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h4 class="section-subtitle">核心代码</h4>
+          <div class="code-block"><span class="hl-comment"># audio_process.py - 关键改造逻辑</span>
+
+<span class="hl-key">elif</span> use_audio_in_video <span class="hl-key">and</span> ele[<span class="hl-str">"type"</span>] == <span class="hl-str">"video"</span>:
+    path = ele.get(<span class="hl-str">"video"</span>, ele.get(<span class="hl-str">"video_url"</span>))
+
+    <span class="hl-comment"># 检查视频是否有音轨</span>
+    <span class="hl-key">assert</span> _check_if_video_has_audio(path)
+
+    <span class="hl-comment"># 用 librosa 加载 16kHz 单声道音频</span>
+    audios.append(
+        librosa.load(data, sr=<span class="hl-val">16000</span>)[<span class="hl-val">0</span>]
+    )</div>
+
+          <div class="code-block"><span class="hl-comment"># auto_infer_omni.py - 推理输入打包</span>
+
+audios, images, videos = process_mm_info(
+    messages, use_audio_in_video=<span class="hl-val">True</span>
+)
+
+inputs = {
+    <span class="hl-str">'prompt'</span>: text,
+    <span class="hl-str">'multi_modal_data'</span>: {
+        <span class="hl-str">'video'</span>: videos,
+        <span class="hl-str">'audio'</span>: audios,    <span class="hl-comment"># 真实音轨</span>
+        <span class="hl-str">'image'</span>: images,
+    },
+    <span class="hl-str">'mm_processor_kwargs'</span>: {
+        <span class="hl-str">'use_audio_in_video'</span>: <span class="hl-val">True</span>,
+    }
+}</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== PART 3: Training Pipeline ======== -->
+    <section class="panel section-gap">
+      <h2 class="section-title">四、训练全流程总览</h2>
+
+      <div class="pipeline-flow">
+        <div class="pipeline-node box-vision" style="border:1px solid rgba(61,90,128,0.3)">数据准备</div>
+        <span class="pipeline-arrow">&rarr;</span>
+        <div class="pipeline-node box-thinker" style="border:1px solid rgba(30,111,92,0.3)">Stage 1: SFT</div>
+        <span class="pipeline-arrow">&rarr;</span>
+        <div class="pipeline-node box-audio" style="border:1px solid rgba(188,92,44,0.3)">Stage 2: DPO</div>
+        <span class="pipeline-arrow">&rarr;</span>
+        <div class="pipeline-node box-fusion" style="border:1px solid rgba(107,76,154,0.3)">Stage 3: GRPO</div>
+        <span class="pipeline-arrow">&rarr;</span>
+        <div class="pipeline-node box-text" style="border:1px solid rgba(30,111,92,0.3)">评测闭环</div>
+      </div>
+    </section>
+
+    <!-- ======== Stage 1: SFT ======== -->
+    <section class="grid-2 section-gap">
+      <div class="panel">
+        <h2 class="section-title" style="color:var(--accent)">Stage 1: SFT 监督微调</h2>
+        <table class="params-table">
+          <thead><tr><th>参数</th><th>值</th></tr></thead>
+          <tbody>
+            <tr><td>基座模型</td><td>Qwen3-Omni-30B-A3B-Instruct</td></tr>
+            <tr><td>训练框架</td><td>Megatron-LM r0.15.0 + Swift</td></tr>
+            <tr><td>数据集</td><td>sft_v1_merged (中英双语 JSONL)</td></tr>
+            <tr><td>最大序列长度</td><td>40,000 tokens</td></tr>
+            <tr><td>学习率</td><td>1e-5, warmup 5%, min 1e-7</td></tr>
+            <tr><td>Batch Size</td><td>micro=1, global=128</td></tr>
+            <tr><td>Epochs</td><td>2 (或 10,000 iters)</td></tr>
+            <tr><td>精度</td><td>bf16 + Flash Attention</td></tr>
+            <tr><td>重计算</td><td>full granularity, uniform</td></tr>
+            <tr><td>保存</td><td>每 900 步</td></tr>
+          </tbody>
+        </table>
+
+        <h4 class="section-subtitle">并行策略</h4>
+        <div class="grid-2" style="gap:10px">
+          <div class="note">
+            <ul>
+              <li><strong>Tensor Parallel</strong> = 4</li>
+              <li><strong>Expert Parallel</strong> = 4 (MoE)</li>
+            </ul>
+          </div>
+          <div class="note">
+            <ul>
+              <li><strong>Pipeline Parallel</strong> = 1</li>
+              <li><strong>Sequence Parallel</strong> = True</li>
+            </ul>
+          </div>
+        </div>
+
+        <h4 class="section-subtitle">冻结策略</h4>
+        <div class="callout callout-green">
+          <strong>freeze_llm = False</strong> &mdash; LLM 全参数微调<br>
+          <strong>freeze_vit = True</strong> &mdash; 视觉编码器冻结（已充分预训练）<br>
+          <strong>freeze_aligner = True</strong> &mdash; 对齐层冻结
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="section-subtitle" style="margin-top:0">MoE 优化配置</h4>
+        <div class="code-block"><span class="hl-key">--moe_grouped_gemm</span> <span class="hl-val">true</span>         <span class="hl-comment"># 分组矩阵乘加速</span>
+<span class="hl-key">--moe_shared_expert_overlap</span> <span class="hl-val">true</span> <span class="hl-comment"># 共享专家计算重叠</span>
+<span class="hl-key">--moe_permute_fusion</span> <span class="hl-val">true</span>       <span class="hl-comment"># 排列融合优化</span>
+<span class="hl-key">--moe_aux_loss_coeff</span> <span class="hl-val">0.001</span>     <span class="hl-comment"># 负载均衡辅助 loss</span></div>
+
+        <h4 class="section-subtitle">多模态处理参数</h4>
+        <div class="code-block"><span class="hl-key">MAX_PIXELS</span>=<span class="hl-val">"1003520"</span>        <span class="hl-comment"># 视觉 token 预算</span>
+<span class="hl-key">ENABLE_AUDIO_OUTPUT</span>=<span class="hl-val">"0"</span>       <span class="hl-comment"># 关闭 Talker (不需语音)</span>
+<span class="hl-key">USE_AUDIO_IN_VIDEO</span>=<span class="hl-val">"true"</span>    <span class="hl-comment"># 显式抽取视频音轨</span>
+<span class="hl-key">ADD_TIMESTAMP</span>=<span class="hl-val">"true"</span>         <span class="hl-comment"># 启用时间标注</span>
+
+<span class="hl-comment"># model_kwargs</span>
+<span class="hl-str">"fps"</span>: <span class="hl-val">4</span>,
+<span class="hl-str">"video_max_token_num"</span>: <span class="hl-val">400</span>,
+<span class="hl-str">"image_max_token_num"</span>: <span class="hl-val">1024</span></div>
+
+        <h4 class="section-subtitle">多机启动流程</h4>
+        <div class="code-block"><span class="hl-comment"># launch_megatron.sh</span>
+<span class="hl-comment"># 1. 解析 NODE_IP_LIST &rarr; Master + Workers</span>
+<span class="hl-comment"># 2. 统一 UNIFIED_TIMESTAMP</span>
+
+<span class="hl-comment"># Master (Rank 0):</span>
+nohup bash train_core.sh > master.log 2>&1 &
+
+<span class="hl-comment"># Workers (Rank 1...N):</span>
+ssh -n -f $WORKER_IP <span class="hl-str">"bash train_core.sh"</span></div>
+      </div>
+    </section>
+
+    <!-- ======== Stage 2: DPO ======== -->
+    <section class="panel section-gap">
+      <h2 class="section-title" style="color:var(--accent-2)">Stage 2: DPO 离线偏好优化</h2>
+      <div class="grid-2">
+        <div>
+          <table class="params-table">
+            <thead><tr><th>参数</th><th>值</th></tr></thead>
+            <tbody>
+              <tr><td>基座模型</td><td>SFT checkpoint-4140</td></tr>
+              <tr><td>训练框架</td><td>DeepSpeed ZeRO-3 + Swift RLHF</td></tr>
+              <tr><td>方法</td><td>DPO (Direct Preference Optimization)</td></tr>
+              <tr><td>数据集</td><td>dpo_v6 (正负样本对, 中英双语)</td></tr>
+              <tr><td>Epochs</td><td>10</td></tr>
+              <tr><td>学习率</td><td>1e-5</td></tr>
+              <tr><td>最大长度</td><td>20,480 tokens</td></tr>
+              <tr><td>冻结</td><td>freeze_vit=True, freeze_aligner=True</td></tr>
+              <tr><td>优化</td><td>gradient_checkpointing, padding_free</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <h4 class="section-subtitle" style="margin-top:0">Loss 设计（三合一）</h4>
+          <div class="grid-3" style="gap:10px">
+            <div class="note">
+              <h3 style="font-size:14px; color:var(--accent-2)">sigmoid</h3>
+              <ul><li>标准 DPO loss</li><li>正样本概率 &gt; 负样本概率</li></ul>
+            </div>
+            <div class="note">
+              <h3 style="font-size:14px; color:var(--accent-2)">bco_pair</h3>
+              <ul><li>Binary Classifier Optimization</li><li>二分类辅助信号</li></ul>
+            </div>
+            <div class="note">
+              <h3 style="font-size:14px; color:var(--accent-2)">sft</h3>
+              <ul><li>SFT 正则化</li><li>防止偏离基座太远</li></ul>
+            </div>
+          </div>
+          <div class="code-block"><span class="hl-key">loss_type</span>    = <span class="hl-str">"sigmoid"</span> <span class="hl-str">"bco_pair"</span> <span class="hl-str">"sft"</span>
+<span class="hl-key">loss_weights</span> = <span class="hl-val">1.0</span> <span class="hl-val">1.0</span> <span class="hl-val">1.0</span></div>
+
+          <div class="callout callout-orange">
+            <strong>DPO 数据构造：</strong>对每条视频生成多个 caption，高质量为 chosen（人工审核 / 高分），低质量为 rejected（含幻觉 / 时间错误 / 音画不一致）
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== Stage 3: GRPO ======== -->
+    <section class="panel section-gap">
+      <h2 class="section-title" style="color:var(--accent-4)">Stage 3: GRPO 在线强化学习</h2>
+
+      <div class="grid-2">
+        <div>
+          <table class="params-table">
+            <thead><tr><th>参数</th><th>值</th></tr></thead>
+            <tbody>
+              <tr><td>基座模型</td><td>SFT checkpoint-4140</td></tr>
+              <tr><td>框架</td><td>Megatron + vLLM (colocate)</td></tr>
+              <tr><td>方法</td><td>GRPO</td></tr>
+              <tr><td>数据集</td><td>rl_v1 (9,600 条)</td></tr>
+              <tr><td>每条采样数</td><td>8 个回复</td></tr>
+              <tr><td>Epochs</td><td>3</td></tr>
+              <tr><td>学习率</td><td>1e-6</td></tr>
+              <tr><td>温度</td><td>1.0</td></tr>
+              <tr><td>Clip</td><td>&epsilon;=3e-4, &epsilon;_high=4e-4</td></tr>
+              <tr><td>KL 惩罚</td><td>&beta;=0.0 (无)</td></tr>
+              <tr><td>推理引擎</td><td>vLLM TP=4, GPU 50%</td></tr>
+              <tr><td>奖励权重</td><td>qa:1.0, timestamp:1.0</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout-purple" style="margin-top:16px">
+            <strong>GRPO vs PPO：</strong>GRPO 不需要单独训练 Value Network，直接用同一批采样的相对排名作为 baseline。beta=0.0 意味着无 KL 惩罚，允许模型大胆探索更好的 caption 生成策略。
+          </div>
+        </div>
+
+        <div>
+          <h4 class="section-subtitle" style="margin-top:0">双信号奖励函数</h4>
+
+          <!-- QA Reward -->
+          <div class="reward-box">
+            <div class="reward-title">
+              <span style="color:var(--accent)">QA Reward</span>
+              <span class="badge-new">内容准确性</span>
+            </div>
+            <div class="reward-steps">
+              <div class="reward-step">模型生成 caption (结构化 JSON)</div>
+              <div class="reward-step">构造 QA 选择题（视觉动态/静态 + 音频事件/属性）</div>
+              <div class="reward-step">发给外部 Qwen3-32B vLLM 服务做 Judge</div>
+              <div class="reward-step">对比标准答案计算 reward</div>
+            </div>
+            <div style="margin-top:10px">
+              <span class="reward-result" style="background:rgba(30,111,92,0.12); color:var(--accent)">答对 &rarr; 1.0</span>
+              <span class="reward-result" style="background:rgba(188,92,44,0.12); color:var(--accent-2)">不确定 &rarr; 0.0</span>
+              <span class="reward-result" style="background:rgba(0,0,0,0.06); color:var(--muted)">答错 &rarr; 0.0</span>
+            </div>
+          </div>
+
+          <!-- Timestamp Reward -->
+          <div class="reward-box" style="margin-top:14px">
+            <div class="reward-title">
+              <span style="color:var(--accent-2)">Timestamp Reward</span>
+              <span class="badge-new">时间标注精度</span>
+            </div>
+            <div class="reward-steps">
+              <div class="reward-step">解析 caption 中的 visual_events / audio_events / overlay_events</div>
+              <div class="reward-step">发给 Qwen3-32B 做语义匹配定位（字幕/行为/对话）</div>
+              <div class="reward-step">与 GT 时间段计算 IoU (交并比)</div>
+            </div>
+            <div style="margin-top:10px">
+              <span class="reward-result" style="background:rgba(61,90,128,0.12); color:var(--accent-3)">IoU &isin; [0, 1] 连续值</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GRPO Loop -->
+      <h4 class="section-subtitle">GRPO 训练循环</h4>
+      <div class="grid-4" style="margin-top:10px">
+        <div class="note" style="text-align:center">
+          <h3 style="color:var(--accent); font-size:36px; margin-bottom:4px">1</h3>
+          <h3 style="font-size:15px">采样</h3>
+          <p style="color:var(--muted); font-size:13.5px; margin-top:6px">vLLM 对每条数据<br>生成 <strong>8 个</strong> caption</p>
+        </div>
+        <div class="note" style="text-align:center">
+          <h3 style="color:var(--accent-2); font-size:36px; margin-bottom:4px">2</h3>
+          <h3 style="font-size:15px">打分</h3>
+          <p style="color:var(--muted); font-size:13.5px; margin-top:6px">QA + Timestamp<br><strong>双信号</strong>奖励评估</p>
+        </div>
+        <div class="note" style="text-align:center">
+          <h3 style="color:var(--accent-3); font-size:36px; margin-bottom:4px">3</h3>
+          <h3 style="font-size:15px">对比</h3>
+          <p style="color:var(--muted); font-size:13.5px; margin-top:6px">8 个回复按 reward 排序<br>高分<strong>强化</strong>，低分<strong>抑制</strong></p>
+        </div>
+        <div class="note" style="text-align:center">
+          <h3 style="color:var(--accent-4); font-size:36px; margin-bottom:4px">4</h3>
+          <h3 style="font-size:15px">更新</h3>
+          <p style="color:var(--muted); font-size:13.5px; margin-top:6px">GRPO loss 更新参数<br>&beta;=0 无 KL 惩罚</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== Stage 4: Eval ======== -->
+    <section class="grid-2 section-gap">
+      <div class="panel">
+        <h2 class="section-title" style="color:var(--accent-3)">Stage 4: 推理与评测</h2>
+
+        <h4 class="section-subtitle" style="margin-top:0">vLLM 推理配置</h4>
+        <table class="params-table">
+          <tbody>
+            <tr><td>推理引擎</td><td>vLLM (Tensor Parallel = 4)</td></tr>
+            <tr><td>最大长度</td><td>20,480 tokens</td></tr>
+            <tr><td>Batch Size</td><td>64</td></tr>
+            <tr><td>并行预处理</td><td>64 workers</td></tr>
+            <tr><td>采样参数</td><td>temp=0.6, top_p=0.95, top_k=20</td></tr>
+            <tr><td>最大生成</td><td>16,384 tokens</td></tr>
+            <tr><td>随机种子</td><td>50 (可复现)</td></tr>
+          </tbody>
+        </table>
+
+        <h4 class="section-subtitle">评测指标</h4>
+        <div class="grid-3" style="gap:10px">
+          <div class="note"><h3 style="font-size:14px">音画一致性</h3><ul><li>音频描述是否匹配视觉内容</li></ul></div>
+          <div class="note"><h3 style="font-size:14px">VQA 准确率</h3><ul><li>基于 caption 的问答正确率</li></ul></div>
+          <div class="note"><h3 style="font-size:14px">时间定位 IoU</h3><ul><li>行为/字幕/对话时间标注精度</li></ul></div>
+          <div class="note"><h3 style="font-size:14px">幻觉检测</h3><ul><li>是否生成视频中不存在的内容</li></ul></div>
+          <div class="note"><h3 style="font-size:14px">OCR 准确率</h3><ul><li>视频内文字检测率</li></ul></div>
+          <div class="note"><h3 style="font-size:14px">Grounding</h3><ul><li>物体定位准确率</li></ul></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="section-title">持续优化闭环</h2>
+
+        <div class="arch-flow">
+          <div class="arch-box-full box-thinker">
+            <span class="box-title">模型推理</span>
+            <span class="box-desc">vLLM batch=64, 多模态输入 (video + audio + text)</span>
+          </div>
+          <div class="arch-arrow">&darr;</div>
+          <div class="arch-box-full box-fusion">
+            <span class="box-title">自动评测</span>
+            <span class="box-desc">Gemini API + Qwen3-32B Judge &rarr; 6 维指标</span>
+          </div>
+          <div class="arch-arrow">&darr;</div>
+          <div class="arch-row">
+            <div class="arch-box box-audio">
+              <span class="box-title">发现问题</span>
+              <span class="box-desc">人工修正 &rarr; 数据回灌 &rarr; 重训练</span>
+            </div>
+            <div class="arch-box box-text">
+              <span class="box-title">达标通过</span>
+              <span class="box-desc">产出数据 &rarr; 数亿级 caption (80%+)</span>
+            </div>
+          </div>
+          <div class="arch-arrow">&darr;</div>
+          <div class="arch-box-full box-vision">
+            <span class="box-title">下一轮迭代</span>
+            <span class="box-desc">数据 &rarr; 训练 &rarr; 评测 &rarr; 修正，形成持续优化闭环</span>
+          </div>
+        </div>
+
+        <h4 class="section-subtitle">技术栈总览</h4>
+        <table class="params-table">
+          <tbody>
+            <tr><td>训练框架</td><td>Megatron-LM r0.15.0 + Swift + DeepSpeed</td></tr>
+            <tr><td>推理引擎</td><td>vLLM (KV Cache, Paging, TP)</td></tr>
+            <tr><td>音频处理</td><td>librosa (16kHz), PyAV (音轨检测)</td></tr>
+            <tr><td>视频处理</td><td>torchcodec / decord / torchvision</td></tr>
+            <tr><td>评测</td><td>Gemini API, Qwen3-32B (外部 Judge)</td></tr>
+            <tr><td>实验追踪</td><td>WandB</td></tr>
+            <tr><td>部署</td><td>vLLM Server (OpenAI API), Gradio</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ======== Oral Version ======== -->
+    <section class="panel section-gap">
+      <h2 class="section-title">五、面试口语版</h2>
+      <div class="oral-box">
+        之前我们纯 VL 版本主要是用 InternVL 来训练，本质上是视觉编码器加语言模型，视频更多还是通过抽帧的方式去理解，音频并不是主干统一建模的一部分。后来切到 Qwen Omni 后，结构上最大的变化是它本身就是统一多模态架构，视频、音频和文本可以在同一套理解链路里融合。官方这套里比较关键的是 <strong>Thinker-Talker</strong> 设计，以及用 <strong>TMRoPE</strong> 去对齐音频和视频时间轴。
+        <br><br>
+        我们本地又做了一层接入改造，在 <code>qwen_omni_utils</code> 里把视频里的音轨显式抽出来，并和视频一起送进推理链路，所以它对有声视频 caption 更自然，也更适合后面的音频理解和 revise。
+        <br><br>
+        训练方面，我们先做 <strong>SFT</strong> 用 Megatron 多机多卡全参数微调，冻住 ViT 和 Aligner 只训 LLM。然后做 <strong>DPO</strong> 偏好优化，用 sigmoid + bco_pair + sft 三合一 loss。最后用 <strong>GRPO</strong> 在线强化学习 &mdash; 奖励函数是 QA accuracy 加 Timestamp IoU 双信号，用外部 Qwen3-32B 当 judge。最终累计产出数亿级 caption 数据，各项指标准确率 80% 以上。
+      </div>
+    </section>
+
+    <!-- ======== Sources ======== -->
+    <section class="panel section-gap sources">
+      <h2 class="section-title">六、参考来源</h2>
+      <div class="grid-2">
+        <div>
+          <h4 class="section-subtitle" style="margin-top:0">官方资料</h4>
+          <ul>
+            <li><a href="https://arxiv.org/html/2509.17765v1">Qwen3-Omni Technical Report (arXiv)</a></li>
+            <li><a href="https://github.com/QwenLM/Qwen3-Omni">Qwen3-Omni GitHub</a></li>
+            <li><a href="https://huggingface.co/docs/transformers/model_doc/qwen3_omni_moe">HuggingFace Transformers Docs</a></li>
+            <li><a href="https://chat.qwen.ai/">Qwen3-Omni Live Demo</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="section-subtitle" style="margin-top:0">项目代码</h4>
+          <ul>
+            <li><code>qwen_omni_utils/v2_5/audio_process.py</code> &mdash; 音频抽取</li>
+            <li><code>qwen_omni_utils/v2_5/vision_process.py</code> &mdash; 视频处理</li>
+            <li><code>training_scripts/qwen3_omni_scripts/sft_train/</code> &mdash; SFT</li>
+            <li><code>training_scripts/qwen3_omni_scripts/offlineRL_train/</code> &mdash; DPO</li>
+            <li><code>training_scripts/qwen3_omni_scripts/onlineRL_train/</code> &mdash; GRPO</li>
+            <li><code>reward_functions/qa_rewards.py</code> &mdash; QA 奖励</li>
+            <li><code>reward_functions/timestamp_rewards_new.py</code> &mdash; 时间奖励</li>
+            <li><code>inference_scripts/vl_infer/auto_infer_omni.py</code> &mdash; 推理</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <p class="footer">
+      本页面整理自 Qwen3 Omni 官方资料与 Hunyuan Uni-Captioner 项目代码，用于面试准备和技术梳理。
+    </p>
+
+  </main>
+</body>
+</html>
